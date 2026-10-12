@@ -28,17 +28,18 @@ class DashboardScreen extends StatefulWidget {
 }
 
 class _DashboardScreenState extends State<DashboardScreen> {
-  // --- Live Telemetry Data (με αρχικές τιμές για preview) ---
-  int rpm = 3200;
-  int speed = 68;
-  double boost = 0.45;
-  String gear = "3";
+  // --- Live Telemetry Data (Αρχικοποίηση από Bluetooth) ---
+  int rpm = 0;
+  int speed = 0;
+  double boost = 0.0;
+  String gear = "N";
+  bool isConnected = false;
   
-  // --- Ρυθμίσεις (που αλλάζουν ΚΑΙ από τον encoder ΚΑΙ από το app) ---
+  // --- Ρυθμίσεις Limiter & LED ---
   int shiftLimit = 6000;
   int ledMode = 0; // 0 = F1 Inverted, 1 = Progressive
 
-  // BLE mock function (Στέλνει τις νέες ρυθμίσεις πίσω στο Arduino)
+  // Συνάρτηση για αποστολή ρυθμίσεων πίσω στο Arduino μέσω BLE
   void sendSettingsToArduino() {
     debugPrint("Sending to Arduino -> Limit: $shiftLimit, Mode: $ledMode");
   }
@@ -51,10 +52,18 @@ class _DashboardScreenState extends State<DashboardScreen> {
       appBar: AppBar(
         backgroundColor: Colors.grey.shade900,
         title: const Text('ALFA TELEMETRY', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-        actions: const [
-          Icon(Icons.bluetooth_connected, color: Colors.green),
-          SizedBox(width: 8),
-          Center(child: Text('CONNECTED  ', style: TextStyle(fontSize: 10, color: Colors.grey))),
+        actions: [
+          Icon(
+            isConnected ? Icons.bluetooth_connected : Icons.bluetooth_disabled,
+            color: isConnected ? Colors.green : Colors.red,
+          ),
+          const SizedBox(width: 8),
+          Center(
+            child: Text(
+              isConnected ? 'CONNECTED  ' : 'DISCONNECTED  ',
+              style: TextStyle(fontSize: 10, color: isConnected ? Colors.grey : Colors.redAccent),
+            ),
+          ),
         ],
       ),
       body: SafeArea(
@@ -80,7 +89,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
               ),
             ),
             
-            // 2. Ηλεκτρονικό "Πάνελ Ρυθμίσεων" στο κάτω μέρος
+            // 2. Πάνελ Ρυθμίσεων
             _buildConfigurationPanel(isLandscape),
           ],
         ),
@@ -129,48 +138,17 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
   }
 
-  // --- Σύνθετο Πάνελ Ρυθμίσεων / Simulator ---
+  // --- Πάνελ Ρυθμίσεων ---
   Widget _buildConfigurationPanel(bool isLandscape) {
     return Container(
       decoration: BoxDecoration(
-        color: const Color(0xFF0A0A0A), // Διορθωμένο χρώμα αντί για shade950
+        color: const Color(0xFF0A0A0A),
         border: Border(top: BorderSide(color: Colors.grey.shade900, width: 2)),
       ),
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          // Πάνω Σειρά: Simulator για τις στροφές (RPM)
-          Row(
-            children: [
-              const Icon(Icons.speed, size: 18, color: Colors.grey),
-              const SizedBox(width: 8),
-              const Text('LIVE RPM SIM: ', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.grey)),
-              Expanded(
-                child: Slider(
-                  value: rpm.toDouble(),
-                  min: 1000,
-                  max: 7500,
-                  activeColor: Colors.redAccent,
-                  inactiveColor: Colors.grey.shade900,
-                  onChanged: (v) {
-                    setState(() {
-                      rpm = v.toInt();
-                      if (rpm > 6200 && gear == "3") {
-                        gear = "4";
-                      } else if (rpm < 2200 && gear == "4") {
-                        gear = "3";
-                      }
-                    });
-                  },
-                ),
-              ),
-              Text('$rpm', style: const TextStyle(fontFamily: 'monospace', fontSize: 11, color: Colors.redAccent)),
-            ],
-          ),
-          const Divider(height: 12, color: Colors.white10),
-          
-          // Κάτω Σειρά: Ρυθμίσεις Limiter & LED Style
           Flex(
             direction: isLandscape ? Axis.horizontal : Axis.vertical,
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -188,7 +166,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                         value: shiftLimit.toDouble(),
                         min: 3000,
                         max: 7500,
-                        divisions: 45, // ανά 100 RPM
+                        divisions: 45,
                         activeColor: Colors.amber,
                         inactiveColor: Colors.grey.shade900,
                         onChanged: (v) {
@@ -223,7 +201,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                         ChoiceChip(
                           label: const Text('F1 INVERTED', style: TextStyle(fontSize: 10)),
                           selected: ledMode == 0,
-                          selectedColor: Colors.cyanAccent.withValues(alpha: 0.2),
+                          selectedColor: Colors.cyanAccent.withOpacity(0.2),
                           onSelected: (selected) {
                             if (selected) {
                               setState(() => ledMode = 0);
@@ -235,7 +213,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                         ChoiceChip(
                           label: const Text('PROGRESSIVE', style: TextStyle(fontSize: 10)),
                           selected: ledMode == 1,
-                          selectedColor: Colors.cyanAccent.withValues(alpha: 0.2),
+                          selectedColor: Colors.cyanAccent.withOpacity(0.2),
                           onSelected: (selected) {
                             if (selected) {
                               setState(() => ledMode = 1);
@@ -258,22 +236,18 @@ class _DashboardScreenState extends State<DashboardScreen> {
   // --- UI COMPONENTS ---
   Widget _buildShiftLightsBar(double size) {
     List<Color> colors = List.generate(8, (_) => Colors.grey.shade900);
-    if (rpm >= shiftLimit) {
+    if (rpm >= shiftLimit && rpm > 0) {
       colors = List.generate(8, (_) => Colors.redAccent);
-    } else {
+    } else if (rpm >= 1500) {
       int active = ((rpm - 1500) / ((shiftLimit - 1500) / 8)).clamp(0, 8).toInt();
       
       if (ledMode == 0) {
-        // F1 Inverted (Έξω προς τα μέσα)
         int stage = ((rpm - 1500) / ((shiftLimit - 1500) / 4)).clamp(0, 4).toInt();
-        if (rpm >= 1500) {
-          colors[0] = Colors.green; colors[7] = Colors.green;
-          if (stage >= 2) { colors[1] = Colors.green; colors[6] = Colors.green; }
-          if (stage >= 3) { colors[2] = Colors.amber; colors[5] = Colors.amber; }
-          if (stage >= 4) { colors[3] = Colors.red;   colors[4] = Colors.red; }
-        }
+        colors[0] = Colors.green; colors[7] = Colors.green;
+        if (stage >= 2) { colors[1] = Colors.green; colors[6] = Colors.green; }
+        if (stage >= 3) { colors[2] = Colors.amber; colors[5] = Colors.amber; }
+        if (stage >= 4) { colors[3] = Colors.red;   colors[4] = Colors.red; }
       } else {
-        // Progressive (Αριστερά προς τα δεξιά)
         for (int i = 0; i < active; i++) {
           colors[i] = i < 4 ? Colors.green : (i < 6 ? Colors.amber : Colors.red);
         }
@@ -309,7 +283,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
         border: Border.all(color: const Color(0xFFB11016), width: 4),
         boxShadow: [
           BoxShadow(
-            color: const Color(0xFFB11016).withValues(alpha: 0.3),
+            color: const Color(0xFFB11016).withOpacity(0.3),
             blurRadius: 15,
             spreadRadius: 1,
           )
