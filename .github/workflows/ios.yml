@@ -1,36 +1,43 @@
-name: Build iOS IPA
+name: Deploy Web App
 
 on:
   workflow_dispatch:
 
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: "pages"
+  cancel-in-progress: true
+
 jobs:
-  build-ios:
-    runs-on: macos-latest
+  deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@v4
 
       - name: Set up Flutter
         uses: subosito/flutter-action@v2
         with:
           channel: 'stable'
 
-      - name: Create iOS Project Files
-        run: flutter create . --platforms=ios
-
       - name: Install Dependencies
         run: flutter pub get
 
-      - name: Build iOS App
-        run: flutter build ios --release --no-codesign
+      - name: Build Web
+        run: flutter build web --release --base-href "/alfa-dash/"
 
-      - name: Compress to IPA
-        run: |
-          mkdir -p Payload
-          mv build/ios/iphoneos/Runner.app Payload/
-          zip -r alfa-dash.ipa Payload
-
-      - name: Upload IPA Artifact
-        uses: actions/upload-artifact@v4
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
         with:
-          name: alfa-dash-ios
-          path: alfa-dash.ipa
+          path: 'build/web'
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
