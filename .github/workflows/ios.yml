@@ -27,6 +27,9 @@ jobs:
         with:
           channel: 'stable'
 
+      - name: Create Web Project Files
+        run: flutter create . --platforms web
+
       - name: Install Dependencies
         run: flutter pub get
 
