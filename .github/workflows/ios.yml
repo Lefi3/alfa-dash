@@ -14,6 +14,9 @@ jobs:
         with:
           channel: 'stable'
 
+      - name: Create iOS Project Files
+        run: flutter create . --platforms=ios
+
       - name: Install Dependencies
         run: flutter pub get
 
